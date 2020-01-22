@@ -25,7 +25,6 @@ dois_OA_colors <- function(dois, email, color_hierarchy = c("gold", "hybrid", "g
 
   if(length(dois) > 0) {
     #send dois to oaDOI.org to obtain article colors - foreach loop sends many requests in parallel to speed up progress
-    print("Get OA colors for dois from database.")
     article_colors <- foreach::foreach(i=1:length(oaDOIs),
                               .export = c(".get_article_color", ".get_loc_article_color", ".to_DOI"),
                               .packages = ("tidyverse")) %dopar% {
