@@ -32,10 +32,18 @@ dois_OA_colors <- function(dois, email, color_hierarchy = c("gold", "hybrid", "g
                               }
     article_colors <- do.call(rbind, article_colors)
     article_colors_tbl <- tibble::tibble(doi = article_colors[,1],
-                                 OA_color = article_colors[,2])
+                                 OA_color = article_colors[,2],
+                                 issn = article_colors[,3],
+                                 journal = article_colors[,4],
+                                 publisher = article_colors[,5],
+                                 date = article_colors[,6])
   } else {
     article_colors_tbl <- tibble::tibble(doi = character(),
-                                 OA_color = character())
+                                 OA_color = character(),
+                                 issn = character(),
+                                 journal = character(),
+                                 publisher = character(),
+                                 date = character())
   }
 
   parallel::stopCluster(cl)
@@ -48,12 +56,33 @@ dois_OA_colors <- function(dois, email, color_hierarchy = c("gold", "hybrid", "g
 .get_article_color <- function(oaDOI, color_hierarchy, sleep)
 {
   article_color <- ""
+  issn <- ""
+  journal <- ""
+  publisher <- ""
+  date <- ""
+
   tryCatch({
     oaDOI_result <- readLines(oaDOI, warn = FALSE)
     oaDOI_result <- jsonlite::fromJSON(oaDOI_result)
 
     is_oa <- oaDOI_result$is_oa
     journal_is_oa <- oaDOI_result$journal_is_oa
+
+    if(!is.null(oaDOI_result$journal_issns)) {
+      issn <- oaDOI_result$journal_issns
+    }
+    
+    if(!is.null(oaDOI_result$journal_name)) {
+      journal <- oaDOI_result$journal_name
+    }
+    
+    if(!is.null(oaDOI_result$publisher)) {
+      publisher <- oaDOI_result$publisher
+    }
+    
+    if(!is.null(oaDOI_result$published_date)) {
+      date <- oaDOI_result$published_date
+    }
 
     #loop over all OA-locations and calculate the OA color for each
     oa_colors <- vector()
@@ -92,8 +121,7 @@ dois_OA_colors <- function(dois, email, color_hierarchy = c("gold", "hybrid", "g
   })
 
   Sys.sleep(sleep)
-
-  return(c(.to_DOI(oaDOI), article_color))
+  return(c(.to_DOI(oaDOI), article_color, issn, journal, publisher, date))
 }
 
 
