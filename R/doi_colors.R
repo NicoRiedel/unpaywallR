@@ -11,9 +11,15 @@
 #' @examples dois_OA_colors(c("10.1186/s12864-016-2566-9","10.1103/physreve.88.012814"), "test@email.com")
 #'
 #' @export dois_OA_colors
+#'
 
-#sends list of dois to unpaywall and returns tibble with two columns: dois & OA color
+#sends list of dois to unpaywall and returns tibble with the DOI, OA_color, issn, journal, publisher, and publication date
 dois_OA_colors <- function(dois, email, color_hierarchy = c("gold", "hybrid", "green", "bronze", "closed"), clusters = 1, sleep = 0) {
+  tbl <- dois_OA_colors_fetch(dois, email, clusters = clusters, sleep = sleep)
+  return(dois_OA_pick_color(tbl, color_hierarchy))
+}
+
+dois_OA_colors_fetch <- function(dois, email, clusters = 1, sleep = 0) {
 
   #parallelize pdf conversion
   cl <- parallel::makeCluster(clusters, outfile="")
@@ -28,18 +34,18 @@ dois_OA_colors <- function(dois, email, color_hierarchy = c("gold", "hybrid", "g
     article_colors <- foreach::foreach(i=1:length(oaDOIs),
                               .export = c(".get_article_color", ".get_loc_article_color", ".to_DOI"),
                               .packages = ("tidyverse")) %dopar% {
-                                .get_article_color(oaDOIs[i], color_hierarchy, sleep)
+                                .get_article_color(oaDOIs[i], sleep)
                               }
     article_colors <- do.call(rbind, article_colors)
     article_colors_tbl <- tibble::tibble(doi = article_colors[,1],
-                                 OA_color = article_colors[,2],
+                                 OA_colors = article_colors[,2],
                                  issn = article_colors[,3],
                                  journal = article_colors[,4],
                                  publisher = article_colors[,5],
                                  date = article_colors[,6])
   } else {
     article_colors_tbl <- tibble::tibble(doi = character(),
-                                 OA_color = character(),
+                                 OA_colors = character(),
                                  issn = character(),
                                  journal = character(),
                                  publisher = character(),
@@ -51,11 +57,51 @@ dois_OA_colors <- function(dois, email, color_hierarchy = c("gold", "hybrid", "g
   return(article_colors_tbl)
 }
 
+dois_OA_pick_color <- function(df, color_hierarchy) {
 
-#returns article color (gold, green, bronze, hybrid, closed) for given oaDOI
-.get_article_color <- function(oaDOI, color_hierarchy, sleep)
+  pick_color <- function(column){
+    res <- vector()
+    for (r in column) {
+      oa_colors <- unlist(strsplit(as.character(r), ";"))
+      article_color <- ""
+
+      for(color in color_hierarchy) {
+        if(color %in% oa_colors) {
+          article_color <- color
+          break
+        }
+      }
+
+      # if("gold" %in% oa_colors) {
+      #   article_color <- "gold"
+      # } else if("green" %in% oa_colors) {
+      #   article_color <- "green"
+      # } else if("hybrid" %in% oa_colors) {
+      #   article_color <- "hybrid"
+      # } else if("bronze" %in% oa_colors) {
+      #   article_color <- "bronze"
+      # } else {
+      #   article_color <- "closed"
+      # }
+
+      res <- append(res, article_color)
+    }
+
+    return(res)
+  }
+
+  result <-
+  df %>%
+    mutate(OA_colors = pick_color(OA_colors)) %>%
+    rename(OA_color = OA_colors)
+
+  return(result)
+}
+
+#returns all article colors for given oaDOI
+.get_article_color <- function(oaDOI, sleep)
 {
-  article_color <- ""
+  oa_colors <- vector()
   issn <- ""
   journal <- ""
   publisher <- ""
@@ -71,23 +117,22 @@ dois_OA_colors <- function(dois, email, color_hierarchy = c("gold", "hybrid", "g
     if(!is.null(oaDOI_result$journal_issns)) {
       issn <- oaDOI_result$journal_issns
     }
-    
+
     if(!is.null(oaDOI_result$journal_name)) {
       journal <- oaDOI_result$journal_name
     }
-    
+
     if(!is.null(oaDOI_result$publisher)) {
       publisher <- oaDOI_result$publisher
     }
-    
+
     if(!is.null(oaDOI_result$published_date)) {
       date <- oaDOI_result$published_date
     }
 
     #loop over all OA-locations and calculate the OA color for each
-    oa_colors <- vector()
     if(length(oaDOI_result$oa_locations) == 0) {
-      oa_colors <- "closed"
+      oa_colors <- append(oa_colors, "closed")
     } else {
       for(i in 1:dim(oaDOI_result$oa_locations)[1])
       {
@@ -96,32 +141,12 @@ dois_OA_colors <- function(dois, email, color_hierarchy = c("gold", "hybrid", "g
       }
     }
 
-    for(color in color_hierarchy) {
-      if(color %in% oa_colors) {
-        article_color <- color
-        break
-      }
-    }
-
-    # if("gold" %in% oa_colors) {
-    #   article_color <- "gold"
-    # } else if("green" %in% oa_colors) {
-    #   article_color <- "green"
-    # } else if("hybrid" %in% oa_colors) {
-    #   article_color <- "hybrid"
-    # } else if("bronze" %in% oa_colors) {
-    #   article_color <- "bronze"
-    # } else {
-    #   article_color <- "closed"
-    # }
-
   }, error=function(e){
-    article_color <- ""
     print("Could not access oaDOI")
   })
 
   Sys.sleep(sleep)
-  return(c(.to_DOI(oaDOI), article_color, issn, journal, publisher, date))
+  return(c(.to_DOI(oaDOI), paste0(oa_colors, collapse=";"), issn, journal, publisher, date))
 }
 
 
